@@ -333,6 +333,56 @@
   .welcome-sub { font-size: 14px; color: var(--text2); margin-bottom: 32px; line-height: 1.6; max-width: 420px; }
   .welcome-actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
 
+  /* ── PIVOT TABLE ── */
+  .pivot-table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: auto; }
+  .pivot-table th {
+    padding: 7px 12px;
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text3);
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    font-weight: 400;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+  .pivot-table th.row-header { text-align: left; position: sticky; left: 0; z-index: 3; min-width: 150px; }
+  .pivot-table th.col-header { text-align: right; min-width: 90px; }
+  .pivot-table th.total-col { background: var(--surface2); font-weight: 500; color: var(--text2); }
+  .pivot-table td {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    text-align: right;
+    white-space: nowrap;
+    color: var(--text2);
+  }
+  .pivot-table td.row-label {
+    text-align: left;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    position: sticky;
+    left: 0;
+    background: var(--surface);
+    z-index: 1;
+  }
+  .pivot-table td.total-col { background: var(--surface2); font-weight: 500; color: var(--text); }
+  .pivot-table tr.total-row td { background: var(--surface2); font-weight: 500; color: var(--text); border-top: 1px solid var(--border-med); }
+  .pivot-table tr.total-row td.row-label { font-weight: 500; }
+  .pivot-table tbody tr:hover td { background: var(--surface2); }
+  .pivot-table tbody tr:hover td.total-col { background: #e8e7e1; }
+  .pv-zero { color: var(--text3) !important; }
+  .pv-neg { color: var(--red) !important; }
+  .pv-pos { color: var(--green) !important; }
+
   /* ── SCROLLBAR ── */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -354,6 +404,7 @@
 <div class="tabs" id="main-tabs" style="display:none">
   <button class="tab active" onclick="switchTab('dashboard',this)">Dashboard</button>
   <button class="tab" onclick="switchTab('expenses',this)">Expenses</button>
+  <button class="tab" onclick="switchTab('pivot',this)">Pivot</button>
   <button class="tab" onclick="switchTab('mapping',this)">Category map</button>
   <button class="tab" onclick="switchTab('networth',this)">Net worth</button>
   <button class="tab" onclick="switchTab('settings',this)">Settings</button>
@@ -376,10 +427,16 @@
 
   <!-- DASHBOARD -->
   <div id="panel-dashboard" class="panel" style="display:none">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div class="form-label" style="margin:0;white-space:nowrap">Showing:</div>
+      <select id="dash-month" onchange="renderDashboard()" style="width:auto;min-width:160px">
+        <option value="">All time</option>
+      </select>
+    </div>
     <div class="metrics">
-      <div class="metric"><div class="metric-label">Spending</div><div class="metric-value neg" id="m-spend">—</div></div>
+      <div class="metric"><div class="metric-label">Expenses</div><div class="metric-value neg" id="m-spend">—</div></div>
       <div class="metric"><div class="metric-label">Rent</div><div class="metric-value neg" id="m-rent">—</div></div>
-      <div class="metric"><div class="metric-label">Net saved</div><div class="metric-value" id="m-saved">—</div></div>
+      <div class="metric"><div class="metric-label">Income</div><div class="metric-value pos" id="m-income">—</div></div>
       <div class="metric"><div class="metric-label">Net worth</div><div class="metric-value pos" id="m-nw">—</div></div>
     </div>
     <div class="two-col">
@@ -425,8 +482,8 @@
       <div class="table-wrap">
         <table>
           <colgroup>
-            <col style="width:80px"><col style="width:28%"><col style="width:14%"><col style="width:13%">
-            <col style="width:14%"><col style="width:13%"><col style="width:72px">
+            <col style="width:100px"><col style="width:26%"><col style="width:14%"><col style="width:12%">
+            <col style="width:13%"><col style="width:12%"><col style="width:72px">
           </colgroup>
           <thead><tr>
             <th>Date</th><th>Description</th><th>Sub-category</th><th>Sub-cat 2</th>
@@ -434,6 +491,66 @@
           </tr></thead>
           <tbody id="txn-body"></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- PIVOT -->
+  <div id="panel-pivot" class="panel" style="display:none">
+    <div class="card">
+      <div class="card-header" style="flex-wrap:wrap;gap:10px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <div>
+            <div class="form-label" style="margin-bottom:3px">Rows</div>
+            <select id="pv-row" onchange="renderPivot()" style="width:auto;min-width:140px">
+              <option value="sub">Sub-category</option>
+              <option value="sub2">Sub-cat 2</option>
+              <option value="cat">Category</option>
+              <option value="source">Source</option>
+            </select>
+          </div>
+          <div>
+            <div class="form-label" style="margin-bottom:3px">Columns</div>
+            <select id="pv-col" onchange="renderPivot()" style="width:auto;min-width:140px">
+              <option value="month">Month</option>
+              <option value="quarter">Quarter</option>
+              <option value="year">Year</option>
+              <option value="source">Source</option>
+              <option value="cat">Category</option>
+              <option value="sub">Sub-category</option>
+            </select>
+          </div>
+          <div>
+            <div class="form-label" style="margin-bottom:3px">Values</div>
+            <select id="pv-val" onchange="renderPivot()" style="width:auto;min-width:120px">
+              <option value="sum">Sum ($)</option>
+              <option value="count">Count</option>
+              <option value="abs">Sum abs ($)</option>
+            </select>
+          </div>
+          <div>
+            <div class="form-label" style="margin-bottom:3px">Filter: category</div>
+            <select id="pv-cat-filter" onchange="renderPivot()" style="width:auto;min-width:150px">
+              <option value="">All</option>
+              <option value="Expense">Expense only</option>
+              <option value="Rent">Rent only</option>
+              <option value="Income">Income only</option>
+              <option value="__net__">Net Income view</option>
+            </select>
+          </div>
+          <div>
+            <div class="form-label" style="margin-bottom:3px">Filter: year</div>
+            <select id="pv-year-filter" onchange="renderPivot()" style="width:auto;min-width:100px">
+              <option value="">All years</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-sm" onclick="exportPivotCSV()">⬇ Export CSV</button>
+      </div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div class="table-wrap" id="pivot-table-wrap">
+        <div style="padding:24px;color:var(--text3);font-size:13px">Load data to see the pivot table.</div>
       </div>
     </div>
   </div>
@@ -1139,7 +1256,7 @@ function reParsePreview(){
     <tbody>${preview.map(r=>{
       const isDup=existingKeys.has(r.date+'|'+r.desc+'|'+r.amount);
       return`<tr>
-        <td>${r.date.slice(5)}</td>
+        <td>${r.date}</td>
         <td title="${r.desc}">${r.desc.slice(0,26)}${r.desc.length>26?'…':''}
           ${isDup?'<span class="badge-dup">dup</span>':'<span class="badge-new">new</span>'}
         </td>
@@ -1197,6 +1314,7 @@ function switchTab(t,btn){
   panel.style.display='block'; panel.classList.add('active');
   if(t==='networth') renderNW();
   if(t==='settings') renderSettings();
+  if(t==='pivot'){ refreshPivotYearFilter(); renderPivot(); }
 }
 function openModal(id){ document.getElementById(id).classList.add('open'); if(id==='upload-modal') toggleBulkNote(); }
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
@@ -1239,16 +1357,8 @@ function renderTxns(){
   const uncat=rows.filter(isUncat).length;
   document.getElementById('txn-count').textContent=`${rows.length} transactions${uncat>0?' · '+uncat+' uncategorized':''}`;
 
-  // update uncategorized badge on tab
-  const totalUncat=state.txns.filter(isUncat).length;
-  document.querySelectorAll('.tab').forEach(t=>{
-    if(t.textContent.includes('Expenses')||t.getAttribute('onclick')?.includes('expenses')){
-      t.innerHTML=`Expenses${totalUncat>0?`<span class="badge">${totalUncat}</span>`:''}`;
-    }
-  });
-
   document.getElementById('txn-body').innerHTML=rows.map(t=>`<tr>
-    <td style="color:var(--text3);font-family:'DM Mono',monospace;font-size:11px">${t.date.slice(5)}</td>
+    <td style="color:var(--text3);font-family:'DM Mono',monospace;font-size:11px">${t.date}</td>
     <td title="${t.desc}" style="font-size:12px">${t.desc}</td>
     <td><span class="pill${isUncat(t)?' uncat':''}">${t.sub}</span></td>
     <td style="color:var(--text3);font-size:11px">${t.sub2!=='N/A'?t.sub2:''}</td>
@@ -1270,12 +1380,18 @@ function renderMappings(){
 }
 
 function renderDashboard(){
-  const latestMonth=state.txns.map(t=>t.date.slice(0,7)).sort().reverse()[0]||'';
-  const mTxns=state.txns.filter(t=>t.date.startsWith(latestMonth));
+  const selMonth = (document.getElementById('dash-month')||{}).value || '';
+  const mTxns = selMonth
+    ? state.txns.filter(t=>t.date && t.date.startsWith(selMonth))
+    : state.txns;
+  const label = selMonth || 'all time';
+
   const expenses=mTxns.filter(t=>t.cat==='Expense'&&t.amount<0).reduce((s,t)=>s+Math.abs(t.amount),0);
   const rent=mTxns.filter(t=>t.cat==='Rent'&&t.amount<0).reduce((s,t)=>s+Math.abs(t.amount),0);
+  const income=mTxns.filter(t=>t.cat==='Income'&&t.amount>0).reduce((s,t)=>s+t.amount,0);
   document.getElementById('m-spend').textContent=fmt(-expenses);
   document.getElementById('m-rent').textContent=fmt(-rent);
+  if(document.getElementById('m-income')) document.getElementById('m-income').textContent=fmt(income);
 
   const assets=state.accounts.filter(a=>a.balance>0).reduce((s,a)=>s+a.balance,0);
   const liabs=state.accounts.filter(a=>a.balance<0).reduce((s,a)=>s+Math.abs(a.balance),0);
@@ -1283,8 +1399,10 @@ function renderDashboard(){
 
   const snaps=state.nwSnapshots.sort((a,b)=>a.month.localeCompare(b.month));
   const delta=snaps.length>1?snaps[snaps.length-1].nw-snaps[snaps.length-2].nw:null;
-  document.getElementById('m-saved').textContent=delta!==null?(delta>=0?'+':'')+fmt(delta):'—';
-  document.getElementById('m-saved').className='metric-value '+(delta===null?'':(delta>=0?'pos':'neg'));
+  if(document.getElementById('m-saved')){
+    document.getElementById('m-saved').textContent=delta!==null?(delta>=0?'+':'')+fmt(delta):'—';
+    document.getElementById('m-saved').className='metric-value '+(delta===null?'':(delta>=0?'pos':'neg'));
+  }
 
   const totals={};
   mTxns.filter(t=>t.amount<0&&t.cat==='Expense').forEach(t=>{
@@ -1302,29 +1420,31 @@ function renderDashboard(){
       </div>`).join('')
     : '<div style="font-size:13px;color:var(--text3);padding:12px 0">No expense data yet</div>';
 
-  renderCharts(latestMonth);
+  renderCharts(selMonth);
 }
 
 let trendInst, nwInst, allocInst;
-function renderCharts(latestMonth){
-  // Build 6-month spend history from actual data
-  const months=state.txns.map(t=>t.date.slice(0,7));
-  const allMonths=[...new Set(months)].sort().slice(-6);
+function renderCharts(selMonth){
+  // Always show last 12 months in the trend chart regardless of dashboard selector
+  const allTxnMonths=state.txns.filter(t=>t.date).map(t=>t.date.slice(0,7));
+  const allMonths=[...new Set(allTxnMonths)].sort().slice(-12);
   const spendData=allMonths.map(m=>
-    Math.round(state.txns.filter(t=>t.date.startsWith(m)&&t.cat==='Expense'&&t.amount<0).reduce((s,t)=>s+Math.abs(t.amount),0))
+    Math.round(state.txns.filter(t=>t.date&&t.date.startsWith(m)&&t.cat==='Expense'&&t.amount<0).reduce((s,t)=>s+Math.abs(t.amount),0))
   );
-  const labels=allMonths.map(m=>{const[y,mo]=m.split('-');return new Date(y,mo-1,1).toLocaleString('default',{month:'short'});});
+  const labels=allMonths.map(m=>{const[y,mo]=m.split('-');return new Date(y,mo-1,1).toLocaleString('default',{month:'short',year:'2-digit'});});
+  // Highlight the selected month if one is chosen
+  const barColors=allMonths.map(m=>selMonth&&m===selMonth?'#2563c0':'#b5cdf4');
 
   if(trendInst)trendInst.destroy();
   trendInst=new Chart(document.getElementById('trendChart').getContext('2d'),{
     type:'bar',
-    data:{labels,datasets:[{data:spendData,backgroundColor:spendData.map((_,i)=>i===spendData.length-1?'#2563c0':'#b5cdf4'),borderRadius:4}]},
+    data:{labels,datasets:[{data:spendData,backgroundColor:barColors,borderRadius:4}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
       scales:{y:{ticks:{callback:v=>'$'+Math.round(v/1000)+'k',font:{size:11}},grid:{color:'rgba(0,0,0,0.04)'}},
-              x:{grid:{display:false},ticks:{font:{size:11}}}}}
+              x:{grid:{display:false},ticks:{font:{size:11},maxRotation:45}}}}
   });
 
-  const snaps=state.nwSnapshots.sort((a,b)=>a.month.localeCompare(b.month)).slice(-8);
+  const snaps=state.nwSnapshots.sort((a,b)=>a.month.localeCompare(b.month)).slice(-12);
   if(nwInst)nwInst.destroy();
   if(snaps.length>0){
     nwInst=new Chart(document.getElementById('nwChart').getContext('2d'),{
@@ -1490,11 +1610,187 @@ window.addEventListener('beforeunload',e=>{
 });
 
 // ═══════════════════════════════════════════════════════════════
+// PIVOT TABLE
+// ═══════════════════════════════════════════════════════════════
+function getDimValue(txn, dim){
+  switch(dim){
+    case 'cat':     return txn.cat||'—';
+    case 'sub':     return txn.sub||'—';
+    case 'sub2':    return txn.sub2==='N/A'?'(none)':txn.sub2||'—';
+    case 'source':  return txn.source||'—';
+    case 'month':   return txn.date?txn.date.slice(0,7):'—';
+    case 'quarter': {
+      if(!txn.date)return'—';
+      const [y,m]=txn.date.split('-');
+      return `${y}-Q${Math.ceil(parseInt(m)/3)}`;
+    }
+    case 'year':    return txn.date?txn.date.slice(0,4):'—';
+    default: return '—';
+  }
+}
+
+function getPivotValue(txn, valType){
+  switch(valType){
+    case 'sum':   return txn.amount||0;
+    case 'abs':   return Math.abs(txn.amount||0);
+    case 'count': return 1;
+    default: return txn.amount||0;
+  }
+}
+
+function renderPivot(){
+  const rowDim = document.getElementById('pv-row').value;
+  const colDim = document.getElementById('pv-col').value;
+  const valType = document.getElementById('pv-val').value;
+  const catFilter = document.getElementById('pv-cat-filter').value;
+  const yearFilter = document.getElementById('pv-year-filter').value;
+
+  // Net Income mode uses fixed row order: Income, Taxes, Rent, Expense
+  const NET_INCOME_CATS = ['Income','Taxes','Rent','Expense'];
+  const isNetIncome = catFilter === '__net__';
+
+  // Filter transactions
+  let data = state.txns.filter(t=>{
+    if(isNetIncome){
+      if(!NET_INCOME_CATS.includes(t.cat)) return false;
+    } else if(catFilter && t.cat !== catFilter){
+      return false;
+    }
+    if(yearFilter && (!t.date || t.date.slice(0,4) !== yearFilter)) return false;
+    return true;
+  });
+
+  if(data.length === 0){
+    document.getElementById('pivot-table-wrap').innerHTML =
+      '<div style="padding:24px;color:var(--text3);font-size:13px">No data matches the current filters.</div>';
+    return;
+  }
+
+  // Date-based column dimensions sort descending (most recent left); others sort ascending
+  const DATE_DIMS = ['month','quarter','year'];
+  const isDateCol = DATE_DIMS.includes(colDim);
+
+  // Build row values
+  let rowVals;
+  if(isNetIncome){
+    // Fixed order for net income view — only show cats that actually have data
+    const present = new Set(data.map(t=>t.cat));
+    rowVals = NET_INCOME_CATS.filter(c=>present.has(c));
+  } else {
+    rowVals = [...new Set(data.map(t=>getDimValue(t,rowDim)))].sort();
+  }
+
+  // Build col values — date dims descending, others ascending
+  let colVals = [...new Set(data.map(t=>getDimValue(t,colDim)))];
+  colVals = colVals.sort((a,b)=> isDateCol ? b.localeCompare(a) : a.localeCompare(b));
+
+  // Aggregate
+  const agg = {};
+  const colTotals = {};
+  const rowTotals = {};
+  let grandTotal = 0;
+
+  rowVals.forEach(r=>{ agg[r]={}; rowTotals[r]=0; });
+  colVals.forEach(c=>{ colTotals[c]=0; });
+
+  data.forEach(t=>{
+    const r = isNetIncome ? t.cat : getDimValue(t,rowDim);
+    const c = getDimValue(t,colDim);
+    const v = getPivotValue(t,valType);
+    if(!rowVals.includes(r)) return;
+    if(!agg[r]) agg[r]={};
+    agg[r][c]=(agg[r][c]||0)+v;
+    rowTotals[r]=(rowTotals[r]||0)+v;
+    colTotals[c]=(colTotals[c]||0)+v;
+    grandTotal+=v;
+  });
+
+  const isCount = valType==='count';
+  const rowLabel = isNetIncome ? 'CATEGORY' : rowDim.toUpperCase();
+
+  function fmtCell(v){
+    if(v===0||v===undefined) return '';
+    if(isCount) return v.toLocaleString();
+    return (v<0?'-':'')+'$'+Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
+  }
+
+  function cellClass(v){
+    if(v===0||v===undefined||isCount) return 'pv-zero';
+    if(v<0) return 'pv-neg';
+    return 'pv-pos';
+  }
+
+  // Build HTML
+  let html = `<table class="pivot-table">
+    <thead><tr>
+      <th class="row-header">${rowLabel}</th>
+      ${colVals.map(c=>`<th class="col-header">${c}</th>`).join('')}
+      <th class="col-header total-col">Total</th>
+    </tr></thead>
+    <tbody>
+    ${rowVals.map(r=>`<tr>
+      <td class="row-label">${r}</td>
+      ${colVals.map(c=>{
+        const v=agg[r]?.[c]||0;
+        return `<td class="${cellClass(v)}">${fmtCell(v)}</td>`;
+      }).join('')}
+      <td class="total-col ${cellClass(rowTotals[r]||0)}">${fmtCell(rowTotals[r]||0)}</td>
+    </tr>`).join('')}
+    <tr class="total-row">
+      <td class="row-label">Total</td>
+      ${colVals.map(c=>{
+        const v=colTotals[c]||0;
+        return`<td class="${cellClass(v)}">${fmtCell(v)}</td>`;
+      }).join('')}
+      <td class="total-col ${cellClass(grandTotal)}">${fmtCell(grandTotal)}</td>
+    </tr>
+    </tbody>
+  </table>`;
+
+  document.getElementById('pivot-table-wrap').innerHTML = html;
+}
+
+function refreshPivotYearFilter(){
+  const years=[...new Set(state.txns.map(t=>t.date?t.date.slice(0,4):null).filter(Boolean))].sort().reverse();
+  const el=document.getElementById('pv-year-filter');
+  if(!el)return;
+  const cur=el.value;
+  el.innerHTML='<option value="">All years</option>'+years.map(y=>`<option value="${y}"${y===cur?' selected':''}>${y}</option>`).join('');
+}
+
+function exportPivotCSV(){
+  const wrap=document.getElementById('pivot-table-wrap');
+  const table=wrap.querySelector('table');
+  if(!table){alert('No pivot data to export.');return;}
+  const rows=[...table.querySelectorAll('tr')];
+  const csv=rows.map(r=>[...r.querySelectorAll('th,td')].map(c=>'"'+c.textContent.trim().replace(/"/g,'""')+'"').join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='pivot-export.csv';
+  a.click();
+}
+
+// ═══════════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════════
+function refreshDashMonthFilter(){
+  const months=[...new Set(state.txns.filter(t=>t.date).map(t=>t.date.slice(0,7)))].sort().reverse();
+  const el=document.getElementById('dash-month');
+  if(!el)return;
+  const cur=el.value;
+  el.innerHTML='<option value="">All time</option>'+months.map(m=>{
+    const[y,mo]=m.split('-');
+    const label=new Date(y,mo-1,1).toLocaleString('default',{month:'long',year:'numeric'});
+    return`<option value="${m}"${m===cur?' selected':''}>${label}</option>`;
+  }).join('');
+}
+
 function refreshAll(){
   initCatSelects();
   refreshMonthFilter();
+  refreshDashMonthFilter();
+  refreshPivotYearFilter();
   renderTxns();
   renderMappings();
   renderDashboard();
