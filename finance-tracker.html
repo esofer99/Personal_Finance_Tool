@@ -529,7 +529,8 @@
     <div class="modal-title">Import CSV</div>
     <div class="form-row">
       <div class="form-label">Source</div>
-      <select id="up-src" style="width:100%" onchange="reParsePreview()">
+      <select id="up-src" style="width:100%" onchange="reParsePreview();toggleBulkNote()">
+        <option value="bulk">Bulk upload (Source, Date, Description, Category…)</option>
         <option value="fidelity-bank">Fidelity Bank</option>
         <option value="fidelity-cc">Fidelity CC</option>
         <option value="chase1">Chase 1</option>
@@ -547,6 +548,12 @@
       <div class="upload-sub">Fidelity Bank · Fidelity CC · Chase · Historical export</div>
     </div>
     <input type="file" id="file-in" accept=".csv" style="display:none" onchange="handleFileInput(this)">
+    <div id="bulk-note" class="info-box" style="margin-bottom:12px">
+      <strong>Required columns (in any order):</strong><br>
+      Source · Date · Description · Category · SubCategory · SubCategory2 · Comment · Amount<br>
+      <span style="opacity:0.8">Category, SubCategory, SubCategory2, and Comment are optional — leave blank to auto-categorize.</span><br><br>
+      <button class="btn btn-sm" onclick="downloadBulkTemplate()" style="margin-top:4px">⬇ Download template CSV</button>
+    </div>
     <div id="import-preview" style="display:none">
       <div style="font-size:12px;font-weight:500;color:var(--text2);margin-bottom:6px" id="preview-header"></div>
       <div class="preview-box" id="preview-rows"></div>
@@ -1010,6 +1017,72 @@ function applyMappings(rows){
 }
 
 // ═══════════════════════════════════════════════════════════════
+// BULK UPLOAD PARSER
+// ═══════════════════════════════════════════════════════════════
+function parseBulk(text){
+  const lines=text.split('\n');
+  const rows=[];
+  let hFound=false, cols={};
+  for(const rawLine of lines){
+    const line=rawLine.trim();
+    if(!line)continue;
+    const c=parseCSVLine(line);
+    if(!hFound){
+      const low=c.map(x=>x.toLowerCase().replace(/[^a-z0-9]/g,''));
+      if(low.includes('source')&&(low.includes('date')||low.includes('rundate'))&&low.includes('description')&&(low.includes('amount')||low.includes('amount$'))){
+        hFound=true;
+        cols.src   = low.findIndex(x=>x==='source');
+        cols.date  = low.findIndex(x=>x==='date'||x==='rundate');
+        cols.desc  = low.findIndex(x=>x==='description');
+        cols.cat   = low.findIndex(x=>x==='category');
+        cols.sub   = low.findIndex(x=>x==='subcategory');
+        cols.sub2  = low.findIndex(x=>x==='subcategory2');
+        cols.notes = low.findIndex(x=>x==='comment'||x==='notes'||x==='securitydescription');
+        cols.amt   = low.findIndex(x=>x==='amount'||x==='amount$');
+      }
+      continue;
+    }
+    if(c.length<4)continue;
+    const rawSrc=(c[cols.src]||'').trim();
+    const isoDate=toISODate(c[cols.date]);
+    if(!isoDate)continue;
+    const desc=(c[cols.desc]||'').trim();
+    if(!desc)continue;
+    const rawAmt=(cols.amt>=0?(c[cols.amt]||''):'').replace(/[,$\s]/g,'').replace(/−/g,'-');
+    const amt=parseFloat(rawAmt);
+    if(isNaN(amt))continue;
+    const cat=(cols.cat>=0?(c[cols.cat]||''):'').trim()||'Expense';
+    const sub=(cols.sub>=0?(c[cols.sub]||''):'').trim()||'Other';
+    const sub2=(cols.sub2>=0?(c[cols.sub2]||''):'').trim()||'N/A';
+    const notes=(cols.notes>=0?(c[cols.notes]||''):'').trim();
+    const source=state.sourceCodes[rawSrc]||rawSrc||'Manual';
+    rows.push({date:isoDate,desc,amount:amt,source,mcc:null,cat,sub,sub2,notes,_raw:desc});
+  }
+  return rows;
+}
+
+function downloadBulkTemplate(){
+  const header='Source,Date,Description,Category,SubCategory,SubCategory2,Comment,Amount';
+  const examples=[
+    'Manual,2026-04-15,April rent,Rent,N/A,N/A,,-3200',
+    'Fidelity CC,2026-04-16,Whole Foods,Expense,Food/Drink,Groceries,Weekly shop,-87.43',
+    'Chase 1,2026-04-17,Uber,Expense,Travel,N/A,,-24.80',
+    'Manual,2026-04-18,Freelance income,Expense,Other,N/A,,1500',
+  ].join('\n');
+  const blob=new Blob([header+'\n'+examples],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='bulk-upload-template.csv';
+  a.click();
+}
+
+function toggleBulkNote(){
+  const src=document.getElementById('up-src').value;
+  const note=document.getElementById('bulk-note');
+  if(note) note.style.display=src==='bulk'?'block':'none';
+}
+
+// ═══════════════════════════════════════════════════════════════
 // IMPORT FLOW
 // ═══════════════════════════════════════════════════════════════
 let csvText='', pendingRows=[];
@@ -1020,9 +1093,11 @@ function handleFileInput(inp){ if(inp.files[0])loadCSV(inp.files[0]); }
 function loadCSV(f){
   const name=f.name.toLowerCase();
   const srcEl=document.getElementById('up-src');
-  if(name.includes('credit_card')||name.includes('credit-card')) srcEl.value='fidelity-cc';
+  if(name.includes('bulk')) srcEl.value='bulk';
+  else if(name.includes('credit_card')||name.includes('credit-card')) srcEl.value='fidelity-cc';
   else if(name.includes('history_for_account')) srcEl.value='fidelity-bank';
   else if(name.includes('chase')) srcEl.value='chase1';
+  toggleBulkNote();
   document.getElementById('drop-label').textContent=f.name;
   const r=new FileReader();
   r.onload=e=>{ csvText=e.target.result; reParsePreview(); };
@@ -1032,15 +1107,16 @@ function loadCSV(f){
 function reParsePreview(){
   if(!csvText)return;
   const src=document.getElementById('up-src').value;
-  const srcLabel={'fidelity-bank':'Fidelity Bank','fidelity-cc':'Fidelity CC','chase1':'Chase 1','chase2':'Chase 2','historical':'Historical'}[src];
+  const srcLabel={'fidelity-bank':'Fidelity Bank','fidelity-cc':'Fidelity CC','chase1':'Chase 1','chase2':'Chase 2','historical':'Historical','bulk':'Bulk'}[src]||src;
   let rows=[];
   if(src==='fidelity-bank') rows=parseFidelityBank(csvText,srcLabel);
   else if(src==='fidelity-cc') rows=parseFidelityCC(csvText,srcLabel);
   else if(src==='historical') rows=parseHistorical(csvText);
+  else if(src==='bulk') rows=parseBulk(csvText);
   else rows=parseChase(csvText,srcLabel);
 
-  // For historical, categories are already set — only apply mappings to rows that are still Other
-  if(src==='historical'){
+  // For historical and bulk, categories are already set — only apply mappings to rows still showing Other
+  if(src==='historical'||src==='bulk'){
     rows=rows.map(r=>r.sub==='Other'?applyMappings([r])[0]:r);
   } else {
     rows=applyMappings(rows);
@@ -1052,7 +1128,10 @@ function reParsePreview(){
   const dupCount=rows.length-newRows.length;
 
   document.getElementById('preview-header').textContent=`${rows.length} parsed — ${newRows.length} new, ${dupCount} already imported`;
-  document.getElementById('preview-note').textContent=src==='fidelity-cc'?'Credit/payment rows skipped automatically.':src==='historical'?'Existing categories preserved from your Excel data.':'';
+  document.getElementById('preview-note').textContent=
+    src==='fidelity-cc'?'Credit/payment rows skipped automatically.':
+    src==='historical'?'Existing categories preserved from your Excel data.':
+    src==='bulk'?'Categories from your CSV preserved; blank category fields auto-categorized.':'';
 
   const preview=rows.slice(0,8);
   document.getElementById('preview-rows').innerHTML=`<table>
@@ -1119,7 +1198,7 @@ function switchTab(t,btn){
   if(t==='networth') renderNW();
   if(t==='settings') renderSettings();
 }
-function openModal(id){ document.getElementById(id).classList.add('open'); }
+function openModal(id){ document.getElementById(id).classList.add('open'); if(id==='upload-modal') toggleBulkNote(); }
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 
 // Close modals on overlay click
